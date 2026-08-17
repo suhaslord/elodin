@@ -21,6 +21,18 @@ nix develop
 just install
 ```
 
+### Cloud Agents (no Nix)
+
+Cloud Agent VMs use the Ubuntu alternative path in `scripts/cloud-agent-install.sh` (Python 3.13, `uv`, `just install` equivalents). Work from the repo root. After install:
+
+```bash
+source .venv/bin/activate
+elodin-db run 127.0.0.1:2240 "$HOME/.local/share/elodin/db"
+.venv/bin/python examples/db-client/main.py --no-editor --duration 5
+```
+
+Prefer `nix develop` on developer machines. Do not add Nix to the Cloud Agent install — flake evaluation and the CUDA/GStreamer shell are too heavy for these VMs.
+
 ### CI Checks
 
 ```bash

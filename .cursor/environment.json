@@ -1,0 +1,16 @@
+{
+  "name": "Elodin",
+  "install": "bash scripts/cloud-agent-install.sh",
+  "start": "bash scripts/cloud-agent-start.sh",
+  "terminals": [
+    {
+      "name": "elodin-db",
+      "command": "bash scripts/cloud-agent-elodin-db.sh",
+      "description": "Elodin-DB telemetry server (Impeller TCP :2240, asset HTTP :2241)"
+    }
+  ],
+  "ports": [
+    { "name": "elodin-db impeller", "port": 2240 },
+    { "name": "elodin-db assets", "port": 2241 }
+  ]
+}
