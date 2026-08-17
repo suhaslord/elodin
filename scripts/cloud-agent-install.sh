@@ -33,9 +33,8 @@ fi
 
 if ! need_cmd uv; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
-  # shellcheck disable=SC1091
-  source "$HOME/.local/bin/env"
 fi
+export PATH="$HOME/.local/bin:$PATH"
 
 if ! need_cmd rustup; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
