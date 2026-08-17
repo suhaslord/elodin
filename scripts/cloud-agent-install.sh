@@ -14,16 +14,20 @@ need_cmd() { command -v "$1" >/dev/null 2>&1; }
 if need_cmd sudo; then
   sudo apt-get update -y
   sudo apt-get install -y --no-install-recommends \
-    just git-lfs pkg-config cmake gfortran patchelf protobuf-compiler \
-    libclang-dev libssl-dev libasound2-dev libudev-dev libopenblas-dev \
-    libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxkbcommon-dev \
-    libwayland-dev software-properties-common curl ca-certificates \
-    python3-dev
+    just git-lfs pkg-config cmake gfortran g++ build-essential patchelf \
+    protobuf-compiler libclang-dev libssl-dev libasound2-dev libudev-dev \
+    libopenblas-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+    libxkbcommon-dev libwayland-dev software-properties-common curl \
+    ca-certificates python3-dev
   if ! need_cmd python3.13; then
     sudo add-apt-repository -y ppa:deadsnakes/ppa
     sudo apt-get update -y
     sudo apt-get install -y --no-install-recommends \
       python3.13 python3.13-dev python3.13-venv
+  fi
+  # rust-lld looks for libstdc++.so in the multiarch dir, not gcc's private libdir.
+  if [ ! -e /usr/lib/x86_64-linux-gnu/libstdc++.so ]; then
+    sudo ln -s libstdc++.so.6 /usr/lib/x86_64-linux-gnu/libstdc++.so
   fi
 fi
 
@@ -33,9 +37,13 @@ if ! need_cmd uv; then
   source "$HOME/.local/bin/env"
 fi
 
-if need_cmd rustup; then
-  rustup show active-toolchain >/dev/null
+if ! need_cmd rustup; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+  # shellcheck disable=SC1091
+  source "$HOME/.cargo/env"
+  export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 fi
+rustup show active-toolchain >/dev/null
 
 git lfs install --skip-repo >/dev/null 2>&1 || true
 
