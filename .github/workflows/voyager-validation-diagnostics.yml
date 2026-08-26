@@ -1,0 +1,60 @@
+name: Voyager validation diagnostics
+
+on:
+  push:
+    branches:
+      - analysis/issue-794-diagnostics
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install diagnostic dependencies
+        run: python -m pip install --disable-pip-version-check numpy spiceypy
+      - name: Download required SPICE kernels
+        working-directory: examples/voyager
+        run: |
+          set -euo pipefail
+          mkdir -p nasa_spice_data
+          curl -fL --retry 3 https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls -o nasa_spice_data/naif0012.tls
+          curl -fL --retry 3 https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440.bsp -o nasa_spice_data/de440.bsp
+          curl -fL --retry 3 https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/vgr1_jup230.bsp -o nasa_spice_data/vgr1_jup230.bsp
+      - name: Run diagnostic matrix
+        working-directory: examples/voyager
+        run: python diagnose_jupiter_validation.py > voyager-diagnostic-results.json
+      - name: Print compact diagnostic summary
+        working-directory: examples/voyager
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('voyager-diagnostic-results.json').read_text())
+          print('hash_match', data['encounter_sha256_matches'])
+          for order, payload in data['orders'].items():
+              print('\nORDER', order)
+              print('coverage', payload['voyager1_coverage_utc'])
+              for key in ('feb06_exact', 'feb06_elodin_semantics', 'feb21_exact', 'feb21_elodin_semantics'):
+                  case = payload[key]
+                  print('\nCASE', key)
+                  for row in case['comparisons']:
+                      print(row)
+              print('\nSWEEP exact')
+              for row in payload['three_day_sweep_exact']:
+                  print(row)
+              print('\nSWEEP elodin_semantics')
+              for row in payload['three_day_sweep_elodin_semantics']:
+                  print(row)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voyager-diagnostic-results
+          path: examples/voyager/voyager-diagnostic-results.json
