@@ -34,15 +34,17 @@ class XronosBridge:
         self._proc.stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
         self._proc.stdin.flush()
 
-        # Xronos may emit startup/runtime diagnostics on stdout.  Keep the wire
-        # protocol strict by accepting only JSON objects that carry a tick and
-        # command; diagnostics are mirrored to stderr for visibility.
+        # Xronos ConsoleInput writes an interactive prompt (currently `> > `)
+        # on the same stdout line as our reactor output.  Decode only the JSON
+        # suffix while still treating all other stdout as diagnostics.
         for _ in range(100):
             line = self._proc.stdout.readline()
             if line == "":
                 raise RuntimeError("Xronos controller closed stdout before a response")
+            json_start = line.find("{")
+            payload = line[json_start:] if json_start >= 0 else line
             try:
-                response = json.loads(line)
+                response = json.loads(payload)
             except json.JSONDecodeError:
                 print(f"[xronos stdout] {line.rstrip()}", file=sys.stderr)
                 continue
