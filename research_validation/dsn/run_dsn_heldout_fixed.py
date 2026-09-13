@@ -12,6 +12,20 @@ import research_validation.dsn.run_dsn_heldout as base
 from TranADPlus.src import models
 
 
+# TranAD+'s gen_TranAD_predictions() reads dataloader.dataset.padding. The
+# lightweight held-out dataset must expose the same public attribute as the
+# upstream TSDataset_tracks implementation.
+_original_dataset_init = base.ArrayWindowDataset.__init__
+
+
+def _dataset_init(self, x, y, window_size, padding, downsample):
+    _original_dataset_init(self, x, y, window_size, padding, downsample)
+    self.padding = bool(padding)
+
+
+base.ArrayWindowDataset.__init__ = _dataset_init
+
+
 def load_model(checkpoint_path: Path, device: str):
     checkpoint = torch.load(checkpoint_path, map_location=device)
     hp = checkpoint["hp_dict"]
