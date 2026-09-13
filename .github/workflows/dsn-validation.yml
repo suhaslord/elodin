@@ -69,7 +69,7 @@ jobs:
       - name: Run calibration-only threshold and untouched final test
         run: |
           set -euxo pipefail
-          python research_validation/dsn/run_dsn_heldout.py \
+          python research_validation/dsn/run_dsn_heldout_fixed.py \
             --checkpoint TranADPlus/Checkpoints/TranAD_DSN_1k_lr0-0001_dff16_wz10_model.ckpt \
             --out-dir results/dsn | tee results/dsn/heldout.log
 
