@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from collections.abc import Sequence
 
 
@@ -33,16 +34,28 @@ class XronosBridge:
         self._proc.stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
         self._proc.stdin.flush()
 
-        line = self._proc.stdout.readline()
-        if line == "":
-            raise RuntimeError("Xronos controller closed stdout")
+        # Xronos may emit startup/runtime diagnostics on stdout.  Keep the wire
+        # protocol strict by accepting only JSON objects that carry a tick and
+        # command; diagnostics are mirrored to stderr for visibility.
+        for _ in range(100):
+            line = self._proc.stdout.readline()
+            if line == "":
+                raise RuntimeError("Xronos controller closed stdout before a response")
+            try:
+                response = json.loads(line)
+            except json.JSONDecodeError:
+                print(f"[xronos stdout] {line.rstrip()}", file=sys.stderr)
+                continue
+            if not isinstance(response, dict) or "tick" not in response or "command" not in response:
+                print(f"[xronos stdout] {line.rstrip()}", file=sys.stderr)
+                continue
+            if int(response["tick"]) != int(tick):
+                raise RuntimeError(
+                    f"Lockstep violation: sent tick {tick}, received tick {response['tick']}"
+                )
+            return float(response["command"])
 
-        response = json.loads(line)
-        if int(response["tick"]) != int(tick):
-            raise RuntimeError(
-                f"Lockstep violation: sent tick {tick}, received tick {response['tick']}"
-            )
-        return float(response["command"])
+        raise RuntimeError("No protocol response after 100 Xronos stdout lines")
 
     def close(self) -> None:
         if self._proc.poll() is None:
