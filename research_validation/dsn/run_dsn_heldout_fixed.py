@@ -34,9 +34,14 @@ def load_model(checkpoint_path: Path, device: str):
             f"unexpected checkpoint metadata: {hp.get('model_str')} / {hp.get('dataset_str')}"
         )
 
-    # training_loop.py parses dim_feedforward before saving hp_dict, so the
-    # checkpoint already contains the literal model width (16 for this run).
-    parsed_dff = int(hp["dim_feedforward"])
+    states = checkpoint["model_states"]
+    # Avoid relying on how the upstream run encoded its dff16 shorthand in
+    # hp_dict. The frozen model weights themselves are authoritative.
+    key = "transformer_encoder.layers.0.linear1.weight"
+    if key not in states:
+        raise KeyError(f"checkpoint missing architecture-defining weight: {key}")
+    parsed_dff = int(states[key].shape[0])
+
     model = models.TranAD(
         n_feats=int(hp["features"]),
         dim_feedforward=parsed_dff,
@@ -45,9 +50,13 @@ def load_model(checkpoint_path: Path, device: str):
         num_encoder_layers=int(hp["num_layers"]),
         num_decoder_layers=int(hp["num_layers"]),
     ).to(device).to(torch.float32)
-    model.load_state_dict(checkpoint["model_states"])
+    model.load_state_dict(states)
     model.eval()
-    print(f"CHECKPOINT_ARCH features={hp['features']} dim_feedforward={parsed_dff}", flush=True)
+    print(
+        f"CHECKPOINT_ARCH features={hp['features']} dim_feedforward={parsed_dff} "
+        f"stored_dim_feedforward={hp.get('dim_feedforward')}",
+        flush=True,
+    )
     return model, hp
 
 
