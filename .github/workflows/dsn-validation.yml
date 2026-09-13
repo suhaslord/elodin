@@ -10,20 +10,73 @@ on:
   workflow_dispatch:
 
 jobs:
-  inventory:
+  heldout-dsn:
     runs-on: ubuntu-latest
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install inventory dependency
-        run: python -m pip install requests
-      - name: Inventory public DSN_1k OSF files
-        run: python research_validation/dsn/osf_inventory.py | tee results/dsn_osf_inventory.txt
+          python-version: '3.10'
+
+      - name: Free runner disk space
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h /
+
+      - name: Install frozen TranAD+ runtime
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.0.0
+          python -m pip install numpy==1.26.0 pandas==2.1.1 scikit-learn==1.2.2 scipy==1.11.3 tqdm==4.65.0 requests gdown
+
+      - name: Clone public TranAD+ source
+        run: git clone --depth 1 https://github.com/yunks128/TranADPlus.git TranADPlus
+
+      - name: Inventory public DSN_1k source
+        run: |
+          mkdir -p results/dsn
+          python research_validation/dsn/osf_inventory.py | tee results/dsn/osf_inventory.txt
+
+      - name: Download public DSN_1k dataset
+        run: |
+          set -euxo pipefail
+          mkdir -p TranADPlus/Datasets/Raw/DSN_1k
+          curl -fL --retry 6 --retry-delay 5 --continue-at - -o TranADPlus/Datasets/Raw/DSN_1k/drs.pkl https://osf.io/download/kqrtg/
+          curl -fL --retry 6 --retry-delay 10 --continue-at - -o TranADPlus/Datasets/Raw/DSN_1k/mons.pkl https://osf.io/download/7gxc3/
+          ls -lh TranADPlus/Datasets/Raw/DSN_1k
+          df -h /
+
+      - name: Download frozen public dff16 checkpoint
+        run: |
+          set -euxo pipefail
+          mkdir -p TranADPlus/Checkpoints
+          gdown --id 1xvc3S6T8LYPKMc0gMsslhJvoq20kS5jc -O TranADPlus/Checkpoints/TranAD_DSN_1k_lr0-0001_dff16_wz10_model.ckpt
+          test -s TranADPlus/Checkpoints/TranAD_DSN_1k_lr0-0001_dff16_wz10_model.ckpt
+          ls -lh TranADPlus/Checkpoints/*.ckpt
+
+      - name: Recreate official 799/200 DSN split
+        run: |
+          set -euxo pipefail
+          python research_validation/dsn/prepare_dsn_original.py | tee results/dsn/preparation.log
+          rm -f TranADPlus/Datasets/Raw/DSN_1k/mons.pkl TranADPlus/Datasets/Raw/DSN_1k/drs.pkl
+          du -sh TranADPlus/Datasets/Original/DSN_1k || true
+          df -h /
+
+      - name: Run calibration-only threshold and untouched final test
+        run: |
+          set -euxo pipefail
+          python research_validation/dsn/run_dsn_heldout.py \
+            --checkpoint TranADPlus/Checkpoints/TranAD_DSN_1k_lr0-0001_dff16_wz10_model.ckpt \
+            --out-dir results/dsn | tee results/dsn/heldout.log
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: dsn-osf-inventory
-          path: results/dsn_osf_inventory*
+          name: dsn-heldout-results
+          path: results/dsn/
           if-no-files-found: warn
+          compression-level: 6
