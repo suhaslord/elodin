@@ -54,7 +54,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p TranADPlus/Checkpoints
-          gdown --id 1xvc3S6T8LYPKMc0gMsslhJvoq20kS5jc -O TranADPlus/Checkpoints/TranAD_DSN_1k_lr0-0001_dff16_wz10_model.ckpt
+          gdown 1xvc3S6T8LYPKMc0gMsslhJvoq20kS5jc -O TranADPlus/Checkpoints/TranAD_DSN_1k_lr0-0001_dff16_wz10_model.ckpt
           test -s TranADPlus/Checkpoints/TranAD_DSN_1k_lr0-0001_dff16_wz10_model.ckpt
           ls -lh TranADPlus/Checkpoints/*.ckpt
 
