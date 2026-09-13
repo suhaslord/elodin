@@ -34,6 +34,6 @@ jobs:
       - name: Run deterministic persistent replay against Xronos
         working-directory: examples/xronos_bridge
         run: timeout 30s python replay_check.py sample_states.jsonl
-      - name: Run Xronos to Elodin external-control force integration
+      - name: Run finite Xronos to Elodin external-control force integration
         working-directory: examples/xronos_bridge
-        run: timeout 90s python elodin_control_integration.py run
+        run: timeout 30s python elodin_control_integration.py
