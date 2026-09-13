@@ -1,0 +1,34 @@
+name: DSN public input discovery
+
+on:
+  push:
+    branches:
+      - suhas/dsn-heldout-validation-20260913
+    paths:
+      - '.github/workflows/dsn-public-input-discovery.yml'
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install public download clients
+        run: python -m pip install -q gdown osfclient
+      - name: List public DSN OSF files
+        shell: bash
+        run: |
+          set -euxo pipefail
+          osf -p t9c2a ls | tee /tmp/osf_files.txt
+      - name: Probe published TranADPlus checkpoint folder
+        shell: bash
+        run: |
+          set -u
+          mkdir -p /tmp/checkpoints
+          timeout 120s gdown --folder --remaining-ok 'https://drive.google.com/drive/folders/1CcdcmmBQIWfF84qR62q6kZUvCsf9B8Wb?usp=sharing' -O /tmp/checkpoints > /tmp/gdown.log 2>&1 || true
+          cat /tmp/gdown.log
+          echo '--- files discovered/downloaded ---'
+          find /tmp/checkpoints -type f -printf '%P\t%s bytes\n' | sort | tee /tmp/checkpoint_files.txt
+          grep -Ei 'DSN|TranAD_DSN' /tmp/gdown.log /tmp/checkpoint_files.txt || true
