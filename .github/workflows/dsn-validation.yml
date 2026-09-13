@@ -1,0 +1,29 @@
+name: DSN validation
+
+on:
+  push:
+    branches:
+      - suhas/spice-validation-runs-20260913
+    paths:
+      - 'research_validation/dsn/**'
+      - '.github/workflows/dsn-validation.yml'
+  workflow_dispatch:
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install inventory dependency
+        run: python -m pip install requests
+      - name: Inventory public DSN_1k OSF files
+        run: python research_validation/dsn/osf_inventory.py | tee results/dsn_osf_inventory.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dsn-osf-inventory
+          path: results/dsn_osf_inventory*
+          if-no-files-found: warn
