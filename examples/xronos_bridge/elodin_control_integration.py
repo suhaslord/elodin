@@ -40,7 +40,19 @@ def apply_external_control(command: ControlCommand, force: el.Force) -> el.Force
 
 def main():
     world = el.World()
-    world.spawn([el.Body(), ControllerState()], name="vehicle")
+    world.spawn(
+        [
+            # Start displaced so the real PD controller must return a non-zero
+            # command and the force system has a measurable dynamical effect.
+            el.Body(
+                world_pos=el.SpatialTransform(
+                    linear=jnp.array([2.0, 0.0, 0.0], dtype=jnp.float64)
+                )
+            ),
+            ControllerState(),
+        ],
+        name="vehicle",
+    )
 
     bridge = XronosBridge([sys.executable, "xronos_controller.py"])
     commands = []
@@ -81,12 +93,19 @@ def main():
         raise RuntimeError(f"Expected multiple lockstep commands, got {len(commands)}")
     if not np.all(np.isfinite(commands)):
         raise RuntimeError("Xronos returned a non-finite command")
+    if not any(abs(c) > 1e-9 for c in commands):
+        raise RuntimeError(f"Expected a non-zero Xronos command, got {commands}")
+    if not any(abs(v) > 1e-9 for v in x_velocities[1:]):
+        raise RuntimeError(
+            "External-control force did not produce measurable X velocity: "
+            f"{x_velocities}"
+        )
 
-    print("real Xronos commands:", commands)
-    print("Elodin x velocities:", x_velocities)
-    print("external_control component: vehicle.control_command")
-    print("force system: apply_external_control -> el.six_dof")
-    print("XRONOS_ELODIN_EXTERNAL_CONTROL_PASS")
+    print("real Xronos commands:", commands, flush=True)
+    print("Elodin x velocities:", x_velocities, flush=True)
+    print("external_control component: vehicle.control_command", flush=True)
+    print("force system: apply_external_control -> el.six_dof", flush=True)
+    print("XRONOS_ELODIN_EXTERNAL_CONTROL_PASS", flush=True)
 
 
 if __name__ == "__main__":
