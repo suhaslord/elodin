@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Run the held-out DSN evaluation while honoring the checkpoint's stored architecture."""
+import sys
 from pathlib import Path
 
 import torch
+
+# Direct script execution puts research_validation/dsn on sys.path, not the repo root.
+sys.path.insert(0, str(Path.cwd()))
 
 import research_validation.dsn.run_dsn_heldout as base
 from TranADPlus.src import models
