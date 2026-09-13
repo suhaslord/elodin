@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Real Xronos -> Elodin external_control -> force-system smoke test."""
 
-from __future__ import annotations
-
 import sys
 import typing as ty
 from dataclasses import field
@@ -40,15 +38,15 @@ def apply_external_control(command: ControlCommand, force: el.Force) -> el.Force
     )
 
 
-def main() -> None:
+def main():
     world = el.World()
     world.spawn([el.Body(), ControllerState()], name="vehicle")
 
     bridge = XronosBridge([sys.executable, "xronos_controller.py"])
-    commands: list[float] = []
-    x_velocities: list[float] = []
+    commands = []
+    x_velocities = []
 
-    def post_step(tick: int, ctx: el.StepContext) -> None:
+    def post_step(tick, ctx):
         reads = ctx.component_batch_operation(
             reads=["vehicle.world_pos", "vehicle.world_vel"]
         )
@@ -56,7 +54,7 @@ def main() -> None:
         vel = np.asarray(reads["vehicle.world_vel"], dtype=float).reshape(-1)
 
         # SpatialTransform is quaternion[0:4] + translation[4:7]; SpatialMotion
-        # is angular[0:3] + linear[3:6].  Feed X position/velocity to Xronos.
+        # is angular[0:3] + linear[3:6]. Feed X position/velocity to Xronos.
         position_x = float(pos[4])
         velocity_x = float(vel[3])
         command = bridge.command(tick, position_x, velocity_x)
