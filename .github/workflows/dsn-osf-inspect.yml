@@ -20,20 +20,17 @@ jobs:
         run: |
           set -euxo pipefail
           python - <<'PY'
-          import requests
+          import json
+          from urllib.request import urlopen
           u='https://api.osf.io/v2/nodes/t9c2a/files/osfstorage/'
-          r=requests.get(u,timeout=30); r.raise_for_status()
-          j=r.json()
-          for x in j['data']:
+          with urlopen(u, timeout=30) as r:
+              data=json.load(r)['data']
+          for x in data:
               a=x['attributes']
-              print(a['name'], a.get('size'), a.get('download'))
-          PY
-          python - <<'PY'
-          import requests
-          u='https://api.osf.io/v2/nodes/t9c2a/files/osfstorage/'
-          data=requests.get(u,timeout=30).json()['data']
+              print(a['name'], a.get('size'), x['links'].get('download'))
           readme=next(x for x in data if x['attributes']['name']=='README.Rmd')
-          text=requests.get(readme['links']['download'],timeout=30).text
+          with urlopen(readme['links']['download'], timeout=30) as r:
+              text=r.read().decode('utf-8', errors='replace')
           print('--- README.Rmd ---')
           print(text)
           PY
