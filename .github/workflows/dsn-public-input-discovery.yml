@@ -10,7 +10,7 @@ on:
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6
     steps:
       - uses: actions/setup-python@v5
         with:
@@ -27,7 +27,7 @@ jobs:
         run: |
           set -u
           mkdir -p /tmp/checkpoints
-          timeout 120s gdown --folder --remaining-ok 'https://drive.google.com/drive/folders/1CcdcmmBQIWfF84qR62q6kZUvCsf9B8Wb?usp=sharing' -O /tmp/checkpoints > /tmp/gdown.log 2>&1 || true
+          timeout 180s gdown --folder 'https://drive.google.com/drive/folders/1CcdcmmBQIWfF84qR62q6kZUvCsf9B8Wb?usp=sharing' -O /tmp/checkpoints > /tmp/gdown.log 2>&1 || true
           cat /tmp/gdown.log
           echo '--- files discovered/downloaded ---'
           find /tmp/checkpoints -type f -printf '%P\t%s bytes\n' | sort | tee /tmp/checkpoint_files.txt
