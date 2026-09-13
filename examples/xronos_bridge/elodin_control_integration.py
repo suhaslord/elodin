@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Real Xronos -> Elodin external_control -> force-system smoke test."""
+
+import sys
+import typing as ty
+from dataclasses import field
+
+import elodin as el
+import jax
+import jax.numpy as jnp
+import numpy as np
+
+from elodin_bridge import XronosBridge
+
+
+ControlCommand = ty.Annotated[
+    jax.Array,
+    el.Component(
+        "control_command",
+        el.ComponentType(el.PrimitiveType.F64, (1,)),
+        metadata={"external_control": "true"},
+    ),
+]
+
+
+@el.dataclass
+class ControllerState(el.Archetype):
+    control_command: ControlCommand = field(
+        default_factory=lambda: jnp.array([0.0], dtype=jnp.float64)
+    )
+
+
+@el.map
+def apply_external_control(command: ControlCommand, force: el.Force) -> el.Force:
+    # Interpret the returned scalar controller command as +X body force (N).
+    return force + el.SpatialForce(
+        linear=jnp.array([command[0], 0.0, 0.0], dtype=jnp.float64)
+    )
+
+
+def main():
+    world = el.World()
+    world.spawn(
+        [
+            # Start displaced so the real PD controller must return a non-zero
+            # command and the force system has a measurable dynamical effect.
+            el.Body(
+                world_pos=el.SpatialTransform(
+                    linear=jnp.array([2.0, 0.0, 0.0], dtype=jnp.float64)
+                )
+            ),
+            ControllerState(),
+        ],
+        name="vehicle",
+    )
+
+    bridge = XronosBridge([sys.executable, "xronos_controller.py"])
+    commands = []
+    x_velocities = []
+
+    def post_step(tick, ctx):
+        reads = ctx.component_batch_operation(
+            reads=["vehicle.world_pos", "vehicle.world_vel"]
+        )
+        pos = np.asarray(reads["vehicle.world_pos"], dtype=float).reshape(-1)
+        vel = np.asarray(reads["vehicle.world_vel"], dtype=float).reshape(-1)
+
+        # SpatialTransform is quaternion[0:4] + translation[4:7]; SpatialMotion
+        # is angular[0:3] + linear[3:6]. Feed X position/velocity to Xronos.
+        position_x = float(pos[4])
+        velocity_x = float(vel[3])
+        command = bridge.command(tick, position_x, velocity_x)
+        commands.append(command)
+        x_velocities.append(velocity_x)
+
+        ctx.component_batch_operation(
+            writes={"vehicle.control_command": np.asarray([command], dtype=np.float64)}
+        )
+
+    try:
+        system = el.six_dof(sys=apply_external_control)
+        world.run(
+            system,
+            simulation_rate=100.0,
+            max_ticks=6,
+            post_step=post_step,
+            start_timestamp=0,
+        )
+    finally:
+        bridge.close()
+
+    if len(commands) < 2:
+        raise RuntimeError(f"Expected multiple lockstep commands, got {len(commands)}")
+    if not np.all(np.isfinite(commands)):
+        raise RuntimeError("Xronos returned a non-finite command")
+    if not any(abs(c) > 1e-9 for c in commands):
+        raise RuntimeError(f"Expected a non-zero Xronos command, got {commands}")
+    if not any(abs(v) > 1e-9 for v in x_velocities[1:]):
+        raise RuntimeError(
+            "External-control force did not produce measurable X velocity: "
+            f"{x_velocities}"
+        )
+
+    print("real Xronos commands:", commands, flush=True)
+    print("Elodin x velocities:", x_velocities, flush=True)
+    print("external_control component: vehicle.control_command", flush=True)
+    print("force system: apply_external_control -> el.six_dof", flush=True)
+    print("XRONOS_ELODIN_EXTERNAL_CONTROL_PASS", flush=True)
+
+
+if __name__ == "__main__":
+    main()
