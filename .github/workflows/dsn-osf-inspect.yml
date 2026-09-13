@@ -1,0 +1,39 @@
+name: DSN OSF inspect
+
+on:
+  push:
+    branches:
+      - suhas/dsn-heldout-validation-20260913
+    paths:
+      - '.github/workflows/dsn-osf-inspect.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inspect OSF DSN file metadata and README
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import requests
+          u='https://api.osf.io/v2/nodes/t9c2a/files/osfstorage/'
+          r=requests.get(u,timeout=30); r.raise_for_status()
+          j=r.json()
+          for x in j['data']:
+              a=x['attributes']
+              print(a['name'], a.get('size'), a.get('download'))
+          PY
+          python - <<'PY'
+          import requests
+          u='https://api.osf.io/v2/nodes/t9c2a/files/osfstorage/'
+          data=requests.get(u,timeout=30).json()['data']
+          readme=next(x for x in data if x['attributes']['name']=='README.Rmd')
+          text=requests.get(readme['links']['download'],timeout=30).text
+          print('--- README.Rmd ---')
+          print(text)
+          PY
