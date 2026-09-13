@@ -1,0 +1,51 @@
+name: Antarctica public input inspect
+
+on:
+  push:
+    branches:
+      - suhas/spice-validation-runs-20260913
+    paths:
+      - '.github/workflows/antarctica-public-inspect.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install readers
+        run: python -m pip install netCDF4 numpy pandas
+      - name: Download public RL06.3Mv04 teaching copy and public dashboard archive
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/antarctica/l4
+          curl -fL --retry 5 -o /tmp/antarctica/l3.nc 'https://zenodo.org/records/20535360/files/GRCTellus.JPL.200204_202601.GLO.RL06.3M.MSCNv04CRI.nc?download=1'
+          echo 'd7aa7765f8e84a1b29c686aeae476523  /tmp/antarctica/l3.nc' | md5sum -c -
+          curl -fL --retry 5 -o /tmp/antarctica/l4.zip 'https://www.jkclimate.fr/MonthlyDashboard/formatted_data/Antarctic_ice_sheet_data_files.zip'
+          unzip -q /tmp/antarctica/l4.zip -d /tmp/antarctica/l4
+          find /tmp/antarctica/l4 -maxdepth 2 -type f -printf '%p\n' | sort
+      - name: Inspect L3 variables and L4 CSVs
+        run: |
+          python - <<'PY'
+          from netCDF4 import Dataset
+          from pathlib import Path
+          p='/tmp/antarctica/l3.nc'
+          with Dataset(p) as ds:
+              print('L3_DIMS', {k: len(v) for k,v in ds.dimensions.items()})
+              for k,v in ds.variables.items():
+                  print('L3_VAR', k, v.dimensions, v.shape, getattr(v,'units',None), getattr(v,'long_name',None))
+              for a in ds.ncattrs():
+                  print('L3_ATTR', a, repr(ds.getncattr(a)))
+          for p in sorted(Path('/tmp/antarctica/l4').rglob('*')):
+              if not p.is_file():
+                  continue
+              print('\n===L4_FILE', p.name, '===')
+              try:
+                  lines=p.read_text(errors='replace').splitlines()
+                  print('\n'.join(lines[:45]))
+              except Exception as e:
+                  print('READ_ERROR', e)
+          PY
