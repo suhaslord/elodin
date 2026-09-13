@@ -1,0 +1,84 @@
+diff --git a/src/helpers.py b/src/helpers.py
+--- a/src/helpers.py
++++ b/src/helpers.py
+@@
+ def evaluate_TranAD(model, train_dataloader, test_dataloader, alpha=0.5, beta=0.5, pot_q=1e-5, device='cpu') -> dict:
+@@
+     return result
++
++def export_TranAD_score_arrays(
++    model,
++    train_dataloader,
++    test_dataloader,
++    alpha=0.5,
++    beta=0.5,
++    device='cpu',
++) -> dict[str, np.ndarray]:
++    """Run inference once and return raw anomaly-score/label arrays.
++
++    This deliberately performs no threshold selection and computes no F1.
++    The arrays are for a separate frozen calibration/test procedure.
++    """
++    loss_fn = nn.MSELoss(reduction='none')
++
++    loss_test, _, _, _, anoms_test = gen_TranAD_predictions(
++        model, loss_fn, test_dataloader, alpha=alpha, beta=beta, device=device
++    )
++    loss_train, _, _, _, anoms_train = gen_TranAD_predictions(
++        model, loss_fn, train_dataloader, alpha=alpha, beta=beta, device=device
++    )
++
++    return {
++        "train_scores_global": np.mean(loss_train, axis=1),
++        "test_scores_global": np.mean(loss_test, axis=1),
++        "train_scores_per_channel": loss_train,
++        "test_scores_per_channel": loss_test,
++        "train_labels_global": (np.sum(anoms_train, axis=1) >= 1).astype(np.uint8),
++        "test_labels_global": (np.sum(anoms_test, axis=1) >= 1).astype(np.uint8),
++        "train_labels_per_channel": anoms_train.astype(np.uint8),
++        "test_labels_per_channel": anoms_test.astype(np.uint8),
++    }
++diff --git a/scripts/evaluation.py b/scripts/evaluation.py
++--- a/scripts/evaluation.py
+++++ b/scripts/evaluation.py
++@@
++     test_dataloader = DataLoader(test_dataset, batch_size=inference_sz, shuffle=False, num_workers=hp_dict['num_workers'])
++     print(f"Length of test dataset:", len(test_dataset))
++     print()
+++
+++    # Optional raw-score export. This intentionally exits before the legacy
+++    # POT/BF path can use final-test labels for threshold/model selection.
+++    if args.export_raw_scores is not None:
+++        if model_str != 'TranAD':
+++            raise ValueError('--export-raw-scores is currently implemented for TranAD only')
+++        raw = helpers.export_TranAD_score_arrays(
+++            model,
+++            train_dataloader,
+++            test_dataloader,
+++            alpha=args.score_alpha,
+++            beta=1.0 - args.score_alpha,
+++            device=device,
+++        )
+++        np.savez_compressed(args.export_raw_scores, **raw)
+++        print(f"Saved raw score arrays to {args.export_raw_scores}")
+++        if args.export_only:
+++            return
++@@
++     parser.add_argument('--num_workers', type=int, default=None)
+++    parser.add_argument(
+++        '--export-raw-scores',
+++        type=str,
+++        default=None,
+++        help='Write raw train/test anomaly score arrays to a compressed NPZ.',
+++    )
+++    parser.add_argument(
+++        '--score-alpha',
+++        type=float,
+++        default=0.5,
+++        help='Frozen TranAD output blend used only for raw score export.',
+++    )
+++    parser.add_argument(
+++        '--export-only',
+++        action='store_true',
+++        help='Exit after score export so legacy test-set threshold search is not run.',
+++    )
