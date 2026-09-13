@@ -162,7 +162,9 @@ def load_model(checkpoint_path: Path, device: str):
     hp = checkpoint["hp_dict"]
     if hp.get("model_str") != "TranAD" or hp.get("dataset_str") != "DSN_1k":
         raise ValueError(f"unexpected checkpoint metadata: {hp.get('model_str')} / {hp.get('dataset_str')}")
-    parsed_dff = helpers.parse_dim_feedforward(hp["features"], hp["dim_feedforward"])
+    # In TranAD+ checkpoint naming, dff16 is a feature-count multiplier rather
+    # than a literal hidden width: 16 * 129 DSN features = 2064 units.
+    parsed_dff = int(hp["features"]) * int(hp["dim_feedforward"])
     model = models.TranAD(
         n_feats=hp["features"],
         dim_feedforward=parsed_dff,
