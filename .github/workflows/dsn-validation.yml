@@ -9,6 +9,10 @@ on:
       - '.github/workflows/dsn-validation.yml'
   workflow_dispatch:
 
+concurrency:
+  group: dsn-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   heldout-dsn:
     runs-on: ubuntu-latest
