@@ -1,0 +1,69 @@
+name: SPICE validation runs
+
+on:
+  push:
+    branches:
+      - suhas/spice-validation-runs-20260913
+    paths:
+      - 'research_validation/**'
+      - '.github/workflows/spice-validation-runs.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install validation dependencies
+        run: python -m pip install numpy scipy spiceypy matplotlib
+      - name: Download official NAIF kernels
+        run: |
+          set -euxo pipefail
+          mkdir -p kernels results
+          curl -fL --retry 4 -o kernels/naif0012.tls https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls
+          curl -fL --retry 4 -o kernels/pck00010.tpc https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc
+          curl -fL --retry 4 -o kernels/insight_edl_rec_v1.bsp https://naif.jpl.nasa.gov/pub/naif/INSIGHT/kernels/spk/insight_edl_rec_v1.bsp
+          curl -fL --retry 4 -o kernels/de430s.bsp https://naif.jpl.nasa.gov/pub/naif/INSIGHT/kernels/spk/de430s.bsp
+          curl -fL --retry 4 -o kernels/mar097s.bsp https://naif.jpl.nasa.gov/pub/naif/INSIGHT/kernels/spk/mar097s.bsp
+          curl -fL --retry 4 -o kernels/de424.bsp https://naif.jpl.nasa.gov/pub/naif/pds/pds4/orex/orex_spice/spice_kernels/spk/de424.bsp
+          curl -fL --retry 4 -o kernels/orx_210115_230917_230915_merged_v1.bsp https://naif.jpl.nasa.gov/pub/naif/pds/pds4/orex/orex_spice/spice_kernels/spk/orx_210115_230917_230915_merged_v1.bsp
+      - name: InSight reduced-order vs reconstructed SPICE
+        run: |
+          python research_validation/insight_edl/generate_reduced_entry.py --out results/insight_reduced_entry.csv
+          python research_validation/insight_edl/validate_insight_edl.py \
+            --spk kernels/insight_edl_rec_v1.bsp \
+            --kernel kernels/naif0012.tls \
+            --kernel kernels/pck00010.tpc \
+            --kernel kernels/de430s.bsp \
+            --kernel kernels/mar097s.bsp \
+            --reduced-csv results/insight_reduced_entry.csv \
+            --out results/insight_edl_scalar_comparison.csv | tee results/insight_metrics.txt
+      - name: OSIRIS-REx Sun-only vs reconstructed SPICE
+        run: |
+          python research_validation/osiris_rex/compare_return_to_spice.py \
+            --spk kernels/orx_210115_230917_230915_merged_v1.bsp \
+            --kernel kernels/naif0012.tls \
+            --kernel kernels/de424.bsp \
+            --out results/osiris_rex_return_comparison.csv | tee results/osiris_metrics.txt
+      - name: Plot OSIRIS-REx error curves
+        run: |
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+          import matplotlib.pyplot as plt
+          p=Path('results/osiris_rex_return_comparison.csv')
+          rows=list(csv.DictReader(p.open()))
+          x=[float(r['elapsed_days']) for r in rows]
+          pe=[float(r['position_error_km']) for r in rows]
+          ve=[float(r['velocity_error_m_s']) for r in rows]
+          plt.figure(figsize=(8,5)); plt.plot(x,pe); plt.xlabel('Elapsed days'); plt.ylabel('Position error (km)'); plt.title('OSIRIS-REx: Sun-only vs reconstructed SPICE'); plt.tight_layout(); plt.savefig('results/osiris_rex_position_error.png',dpi=160); plt.close()
+          plt.figure(figsize=(8,5)); plt.plot(x,ve); plt.xlabel('Elapsed days'); plt.ylabel('Velocity error (m/s)'); plt.title('OSIRIS-REx: Sun-only vs reconstructed SPICE'); plt.tight_layout(); plt.savefig('results/osiris_rex_velocity_error.png',dpi=160); plt.close()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spice-validation-results
+          path: results/
+          if-no-files-found: warn
