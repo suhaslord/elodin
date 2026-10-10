@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import elodin as el
+import jax
 import jax.numpy as jnp
 import numpy as np
 import spiceypy as spice
@@ -27,10 +28,14 @@ start_et = spice.utc2et(START)
 end_et = spice.utc2et(END)
 steps = round((end_et - start_et) / TIME_STEP)
 sun_gm = float(spice.bodvrd("SUN", "GM", 1)[1][0]) * 1.0e9
+jupiter_gm = float(spice.bodvrd("JUPITER BARYCENTER", "GM", 1)[1][0]) * 1.0e9
+JupiterPosition = el.Annotated[
+    jax.Array, el.Component("jupiter_position", el.ComponentType(el.PrimitiveType.F64, (3,)))
+]
 
 
-def reference_state(et: float) -> np.ndarray:
-    state, _ = spice.spkezr("VOYAGER 1", et, "ECLIPJ2000", "NONE", "SUN")
+def reference_state(et: float, target: str = "VOYAGER 1") -> np.ndarray:
+    state, _ = spice.spkezr(target, et, "ECLIPJ2000", "NONE", "SUN")
     return np.asarray(state, dtype=np.float64) * 1000.0
 
 
@@ -44,16 +49,26 @@ world.spawn(
             world_vel=el.WorldVel(linear=jnp.asarray(initial_state[3:])),
             inertia=el.Inertia(MASS_KG),
         ),
+        el.C(JupiterPosition, reference_state(start_et, "JUPITER BARYCENTER")[:3]),
     ],
     name="voyager1",
 )
 position_errors_km = []
 
 
+def pre_step(tick: int, ctx: el.StepContext) -> None:
+    et = start_et + (tick + 0.5) * TIME_STEP
+    ctx.write_component("voyager1.jupiter_position", reference_state(et, "JUPITER BARYCENTER")[:3])
+
+
 @el.map
-def gravity(pos: el.WorldPos, inertia: el.Inertia) -> el.Force:
+def gravity(pos: el.WorldPos, inertia: el.Inertia, jupiter: JupiterPosition) -> el.Force:
     r = pos.linear()
     acceleration = -sun_gm * r / jnp.linalg.norm(r) ** 3
+    to_jupiter = jupiter - r
+    acceleration += jupiter_gm * (
+        to_jupiter / jnp.linalg.norm(to_jupiter) ** 3 - jupiter / jnp.linalg.norm(jupiter) ** 3
+    )
     return el.SpatialForce(linear=inertia.mass() * acceleration)
 
 
@@ -73,8 +88,8 @@ def post_step(tick: int, ctx: el.StepContext) -> None:
     print(f"Max position error: {max(position_errors_km):.3f} km")
 
 
-print(f"Voyager 1 Sun-only baseline: {START} to {END} ({steps} hourly steps)")
-print("Sun gravity only; planetary gravity, SRP and thrust are omitted.")
+print(f"Voyager 1 Sun/Jupiter baseline: {START} to {END} ({steps} hourly steps)")
+print("Sun and Jupiter gravity only; other planets, SRP and thrust are omitted.")
 start_timestamp = int(
     datetime.fromisoformat(START).replace(tzinfo=timezone.utc).timestamp() * 1_000_000
 )
@@ -83,6 +98,7 @@ world.run(
     simulation_rate=1.0 / TIME_STEP,
     max_ticks=steps,
     start_timestamp=start_timestamp,
+    pre_step=pre_step,
     post_step=post_step,
     db_path="dbs/voyager-chapter1",
     interactive=False,
