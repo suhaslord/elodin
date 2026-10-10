@@ -47,6 +47,7 @@ world.spawn(
     ],
     name="voyager1",
 )
+position_errors_km = []
 
 
 @el.map
@@ -57,16 +58,19 @@ def gravity(pos: el.WorldPos, inertia: el.Inertia) -> el.Force:
 
 
 def post_step(tick: int, ctx: el.StepContext) -> None:
-    if tick != steps - 1:
-        return
     et = start_et + (tick + 1) * TIME_STEP
     truth = reference_state(et)
     position = np.asarray(ctx.read_component("voyager1.world_pos"))[4:7]
     velocity = np.asarray(ctx.read_component("voyager1.world_vel"))[3:6]
     position_error_km = np.linalg.norm(position - truth[:3]) / 1000.0
+    position_errors_km.append(position_error_km)
+    if tick != steps - 1:
+        return
     velocity_error_mps = np.linalg.norm(velocity - truth[3:])
     print(f"Final position error: {position_error_km:.3f} km")
     print(f"Final velocity error: {velocity_error_mps:.6f} m/s")
+    print(f"Mean position error: {np.mean(position_errors_km):.3f} km")
+    print(f"Max position error: {max(position_errors_km):.3f} km")
 
 
 print(f"Voyager 1 Sun-only baseline: {START} to {END} ({steps} hourly steps)")
